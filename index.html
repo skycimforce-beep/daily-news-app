@@ -237,7 +237,7 @@
                     parts: [{ text: prompt }]
                 }],
                 // 啟用 Google 搜尋作為工具，確保新聞是最新的
-                tools: [{ google_search: {} }]
+                tools: [{ googleSearch: {} }]
             };
 
             try {
@@ -247,6 +247,9 @@
                     body: JSON.stringify(payload)
                 });
 
+                // 👈 請在這裡加入下面這一行，這樣我們就能在 F12 看到 Google 到底說了什麼
+                console.log("Google API 真實回應：", data);
+                
                 // 解析回傳的文字
                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 
