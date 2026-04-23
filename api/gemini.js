@@ -1,4 +1,4 @@
-// api/gemini.js
+// 強制 Vercel 更新環境變數 2026-04-23
 export default async function handler(req, res) {
     // 確保只接受 POST 請求
     if (req.method !== 'POST') {
