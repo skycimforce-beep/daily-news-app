@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     }
 
     // Google Gemini 的真實 API 網址
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
 
     try {
         // 將前端傳來的資料 (req.body)，原封不動轉發給 Google
