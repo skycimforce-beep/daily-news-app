@@ -179,8 +179,7 @@
         // 初始化 Lucide 圖示
         lucide.createIcons();
 
-        // API 密鑰由環境動態提供
-        const apiKey = "AIzaSyBYdC2GifbUCpAM4lDqd60z5HQnpTD0Yws";
+
         
         // 儲存當前新聞內容，供 AI 互動使用
         let currentNewsText = "";
@@ -219,7 +218,7 @@
             const refreshIcon = document.querySelector('#refreshBtn svg') || document.querySelector('#refreshBtn i');
             if (refreshIcon) refreshIcon.classList.add('animate-spin');
 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const apiUrl = `/api/gemini`;
             
             // 給 Gemini 的提示詞，明確要求使用繁體中文、條列式重點，並使用 Google 搜尋
             const prompt = `
@@ -352,7 +351,7 @@
             if (!currentNewsText) return;
             showAILoading();
 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const apiUrl = `/api/gemini`;
             const prompt = `
                 以下是今天的焦點新聞摘要：
                 ${currentNewsText}
@@ -383,7 +382,7 @@
             if (!currentNewsText) return;
             showAILoading();
 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const apiUrl = `/api/gemini`;
             const prompt = `
                 以下是今天的焦點新聞摘要：
                 ${currentNewsText}
