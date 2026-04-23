@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <!-- 針對 iOS PWA 最佳化的 Meta Tags -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="今日焦點">
+    <title>今日焦點新聞</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Marked.js 用於解析 Gemini 回傳的 Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- 引入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* iOS 風格的基礎設定 */
+        :root {
+            --safe-area-inset-top: env(safe-area-inset-top, 20px);
+            --safe-area-inset-bottom: env(safe-area-inset-bottom, 20px);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            background-color: #f2f2f7; /* iOS 設定頁面的經典底色 */
+            padding-top: var(--safe-area-inset-top);
+            padding-bottom: var(--safe-area-inset-bottom);
+        }
+        
+        /* Markdown 內容的樣式美化 */
+        .prose h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #000;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .prose p {
+            font-size: 0.95rem;
+            color: #3a3a3c;
+            line-height: 1.5;
+            margin-bottom: 1rem;
+        }
+        .prose strong {
+            font-weight: 600;
+            color: #000;
+        }
+        .prose ul {
+            list-style-type: disc;
+            padding-left: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .prose li {
+            margin-bottom: 0.25rem;
+        }
+
+        /* 隱藏捲軸但保留滾動功能 */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        /* iOS 毛玻璃效果 */
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        /* 載入動畫 */
+        .loader {
+            border: 3px solid #e5e5ea;
+            border-radius: 50%;
+            border-top: 3px solid #007aff;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+        .loader-sm {
+            width: 16px;
+            height: 16px;
+            border-width: 2px;
+            border-top-width: 2px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-black overflow-x-hidden">
+
+    <!-- 頂部導航列 (iOS 風格) -->
+    <nav class="glass-nav fixed top-0 left-0 right-0 z-50 border-b border-gray-200" style="padding-top: var(--safe-area-inset-top);">
+        <div class="flex items-center justify-between px-4 py-3 h-14">
+            <div class="w-8"></div> <!-- 佔位符以保持置中 -->
+            <h1 class="text-[17px] font-semibold tracking-tight text-center flex-1">今日焦點</h1>
+            <button id="refreshBtn" class="w-8 h-8 flex items-center justify-center text-[#007aff] active:opacity-50 transition-opacity">
+                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- 主要內容區 -->
+    <main class="px-4 pb-8" style="margin-top: calc(3.5rem + var(--safe-area-inset-top));">
+        
+        <!-- 當前日期與問候 -->
+        <div class="mt-4 mb-6">
+            <h2 id="dateDisplay" class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1"></h2>
+            <h3 class="text-3xl font-bold tracking-tight">為您整理的新聞</h3>
+        </div>
+
+        <!-- 狀態卡片 (載入中/錯誤) -->
+        <div id="statusContainer" class="bg-white rounded-2xl p-6 shadow-sm mb-6 flex flex-col items-center justify-center min-h-[200px]">
+            <div id="loadingState" class="flex flex-col items-center">
+                <div class="loader mb-4"></div>
+                <p class="text-gray-500 font-medium">正在搜尋最新國內外資訊...</p>
+                <p class="text-xs text-gray-400 mt-2 text-center">Gemini 正在為您摘要重點</p>
+            </div>
+            <div id="errorState" class="hidden flex-col items-center text-center">
+                <i data-lucide="alert-circle" class="w-10 h-10 text-red-500 mb-3"></i>
+                <p class="text-gray-900 font-medium mb-1">無法載入新聞</p>
+                <p id="errorMsg" class="text-sm text-gray-500 mb-4">請檢查您的網路連線或稍後再試。</p>
+                <button onclick="fetchNews()" class="bg-[#007aff] text-white px-4 py-2 rounded-full text-sm font-semibold active:scale-95 transition-transform">
+                    重試
+                </button>
+            </div>
+        </div>
+
+        <!-- 新聞內容卡片 -->
+        <div id="newsContainer" class="hidden">
+            <div class="bg-white rounded-2xl p-5 shadow-sm mb-6">
+                <div id="newsContent" class="prose max-w-none">
+                    <!-- Markdown 內容將注入於此 -->
+                </div>
+            </div>
+
+            <!-- 來源標籤 -->
+            <div id="sourcesContainer" class="hidden mb-6">
+                <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 ml-1">資訊來源 (Google 搜尋)</h4>
+                <div id="sourcesList" class="flex flex-wrap gap-2">
+                    <!-- 來源標籤將注入於此 -->
+                </div>
+            </div>
+
+            <!-- AI 互動區 (新增) -->
+            <div id="aiActions" class="mt-6 border-t border-gray-200 pt-6">
+                <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 ml-1">✨ AI 互動探索</h4>
+                <div class="flex flex-wrap gap-3">
+                    <button onclick="explainSimply()" class="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-4 py-3 rounded-xl text-sm font-semibold shadow-sm active:scale-95 transition-transform flex items-center justify-center">
+                        <i data-lucide="baby" class="w-4 h-4 mr-2"></i> ✨ 白話文模式
+                    </button>
+                    <button onclick="generateQuiz()" class="flex-1 bg-gradient-to-r from-orange-400 to-pink-500 text-white px-4 py-3 rounded-xl text-sm font-semibold shadow-sm active:scale-95 transition-transform flex items-center justify-center">
+                        <i data-lucide="brain-circuit" class="w-4 h-4 mr-2"></i> ✨ 測驗一下
+                    </button>
+                </div>
+                
+                <!-- AI 結果展示區 -->
+                <div id="aiResultContainer" class="hidden mt-4 bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div id="aiLoading" class="hidden flex items-center justify-center py-4">
+                        <div class="loader loader-sm"></div>
+                        <span class="ml-3 text-sm text-gray-500 font-medium">Gemini 正在思考中...</span>
+                    </div>
+                    <div id="aiContent" class="prose max-w-none text-sm hidden"></div>
+                </div>
+            </div>
+            
+            <p class="text-center text-xs text-gray-400 mt-8 mb-4">
+                由 Google Gemini Pro 結合即時搜尋生成
+            </p>
+        </div>
+
+    </main>
+
+    <script>
+        // 初始化 Lucide 圖示
+        lucide.createIcons();
+
+        // API 密鑰由環境動態提供
+        const apiKey = "";
+        
+        // 儲存當前新聞內容，供 AI 互動使用
+        let currentNewsText = "";
+
+        // 設定今天的日期
+        const today = new Date();
+        const options = { weekday: 'long', month: 'long', day: 'numeric' };
+        document.getElementById('dateDisplay').textContent = today.toLocaleDateString('zh-TW', options);
+
+        // 具有指數退避的 Retry 邏輯
+        async function fetchWithRetry(url, options, maxRetries = 5) {
+            const delays = [1000, 2000, 4000, 8000, 16000];
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, delays[i]));
+                }
+            }
+        }
+
+        // 取得並整理新聞
+        async function fetchNews() {
+            // UI 狀態切換
+            document.getElementById('statusContainer').classList.remove('hidden');
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+            document.getElementById('newsContainer').classList.add('hidden');
+            
+            // 讓重新整理按鈕旋轉
+            const refreshIcon = document.querySelector('#refreshBtn svg') || document.querySelector('#refreshBtn i');
+            if (refreshIcon) refreshIcon.classList.add('animate-spin');
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            // 給 Gemini 的提示詞，明確要求使用繁體中文、條列式重點，並使用 Google 搜尋
+            const prompt = `
+                請利用 Google 搜尋，整理出今天（台灣時間）最重要、必須要知道的 5 則國內與國際焦點新聞。
+                請以「繁體中文」撰寫。
+                
+                格式要求：
+                - 使用 Markdown 語法。
+                - 每一則新聞請使用 <h3> 標題 (例如：### 1. [新聞標題])。
+                - 標題下方請用一段約 50-80 字的文字，精要地說明該事件的核心重點與影響。
+                - 請直接輸出新聞內容，不要加上任何開頭問候語或結尾客套話。
+            `;
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: prompt }]
+                }],
+                // 啟用 Google 搜尋作為工具，確保新聞是最新的
+                tools: [{ google_search: {} }]
+            };
+
+            try {
+                const data = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // 解析回傳的文字
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                // 解析來源 (Grounding sources)
+                const attributions = data.candidates?.[0]?.groundingMetadata?.groundingAttributions || [];
+                const sources = attributions
+                    .filter(a => a.web && a.web.uri && a.web.title)
+                    .map(a => ({ uri: a.web.uri, title: a.web.title }));
+
+                if (text) {
+                    currentNewsText = text; // 儲存新聞以便後續 AI 處理
+                    
+                    // 隱藏 AI 結果區 (重置)
+                    document.getElementById('aiResultContainer').classList.add('hidden');
+                    document.getElementById('aiContent').innerHTML = '';
+
+                    // 使用 Marked.js 將 Markdown 轉換為 HTML
+                    document.getElementById('newsContent').innerHTML = marked.parse(text);
+                    
+                    // 處理來源標籤
+                    const sourcesContainer = document.getElementById('sourcesContainer');
+                    const sourcesList = document.getElementById('sourcesList');
+                    sourcesList.innerHTML = ''; // 清空舊來源
+                    
+                    // 過濾重複的 URL
+                    const uniqueSources = [];
+                    const seenUris = new Set();
+                    for (const source of sources) {
+                        if (!seenUris.has(source.uri)) {
+                            seenUris.add(source.uri);
+                            uniqueSources.push(source);
+                        }
+                    }
+
+                    if (uniqueSources.length > 0) {
+                        uniqueSources.forEach(source => {
+                            const link = document.createElement('a');
+                            link.href = source.uri;
+                            link.target = "_blank";
+                            link.rel = "noopener noreferrer";
+                            link.className = "inline-flex items-center px-3 py-1.5 rounded-full bg-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-300 transition-colors max-w-full line-clamp-1 truncate";
+                            
+                            // 簡化標題長度
+                            let displayTitle = source.title;
+                            if (displayTitle.length > 20) {
+                                displayTitle = displayTitle.substring(0, 20) + '...';
+                            }
+                            
+                            link.innerHTML = `<i data-lucide="link" class="w-3 h-3 mr-1 inline"></i>${displayTitle}`;
+                            sourcesList.appendChild(link);
+                        });
+                        lucide.createIcons();
+                        sourcesContainer.classList.remove('hidden');
+                    } else {
+                        sourcesContainer.classList.add('hidden');
+                    }
+
+                    // 顯示新聞區塊
+                    document.getElementById('statusContainer').classList.add('hidden');
+                    document.getElementById('newsContainer').classList.remove('hidden');
+                } else {
+                    throw new Error("無法取得新聞內容");
+                }
+
+            } catch (error) {
+                console.error("Error fetching news:", error);
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('errorState').classList.remove('hidden');
+                document.getElementById('errorState').style.display = 'flex';
+                document.getElementById('errorMsg').textContent = "與 Gemini 服務連線失敗，請稍後再試。";
+            } finally {
+                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+            }
+        }
+
+        // --- 新增: AI 互動功能 ---
+
+        // 顯示 AI 載入中 UI
+        function showAILoading() {
+            document.getElementById('aiResultContainer').classList.remove('hidden');
+            document.getElementById('aiLoading').classList.remove('hidden');
+            document.getElementById('aiLoading').classList.add('flex');
+            document.getElementById('aiContent').classList.add('hidden');
+            // 稍微延遲以確保 DOM 渲染完畢後再滾動
+            setTimeout(() => {
+                document.getElementById('aiResultContainer').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 100);
+        }
+
+        // 顯示 AI 結果 UI
+        function showAIResult(markdownText) {
+            document.getElementById('aiLoading').classList.add('hidden');
+            document.getElementById('aiLoading').classList.remove('flex');
+            const aiContent = document.getElementById('aiContent');
+            aiContent.innerHTML = marked.parse(markdownText);
+            aiContent.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        // ✨ 白話文模式
+        async function explainSimply() {
+            if (!currentNewsText) return;
+            showAILoading();
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const prompt = `
+                以下是今天的焦點新聞摘要：
+                ${currentNewsText}
+                
+                請將這些新聞轉換為「白話文模式」。
+                目標讀者是 10 歲的兒童或完全不懂政治經濟的普通人。
+                請用非常生動、活潑、簡單的比喻來解釋這些新聞為什麼重要。
+                格式要求：使用 Markdown，並加上適當的 Emoji 讓閱讀更有趣。不要加上多餘的開頭或結尾。
+            `;
+
+            try {
+                const data = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) showAIResult(text);
+                else throw new Error("無回應");
+            } catch (error) {
+                console.error(error);
+                showAIResult("⚠️ 產生白話文時發生錯誤，請稍後再試。");
+            }
+        }
+
+        // ✨ 測驗一下
+        async function generateQuiz() {
+            if (!currentNewsText) return;
+            showAILoading();
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const prompt = `
+                以下是今天的焦點新聞摘要：
+                ${currentNewsText}
+                
+                請根據這些新聞，設計 3 題有趣的「選擇題」，來測試讀者是否有認真看懂新聞。
+                格式要求：
+                1. 使用 Markdown 格式。
+                2. 每題包含題目與 A, B, C, D 四個選項。
+                3. 在所有題目的「最下方」，提供一個 HTML 的 <details> 標籤，裡面包含正確答案與簡單的解釋。例如：
+                   <details>
+                     <summary>👉 點我看正確答案與解析</summary>
+                     1. A (原因...)<br>2. B (原因...)<br>3. C (原因...)
+                   </details>
+            `;
+
+            try {
+                const data = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) showAIResult(text);
+                else throw new Error("無回應");
+            } catch (error) {
+                console.error(error);
+                showAIResult("⚠️ 產生測驗時發生錯誤，請稍後再試。");
+            }
+        }
+
+        // 綁定重新整理按鈕
+        document.getElementById('refreshBtn').addEventListener('click', fetchNews);
+
+        // 網頁載入完成後自動抓取新聞
+        window.onload = function() {
+            fetchNews();
+        };
+
+    </script>
+</body>
+</html>
